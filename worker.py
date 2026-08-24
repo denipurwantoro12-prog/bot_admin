@@ -53,6 +53,12 @@ async def get_channel_name(event, bot_info: BotAdmin) -> str:
     return channel_name or "Grup/Channel Tanpa Nama"
 
 async def process_winner_announcement(client: TelegramClient, bot_info: BotAdmin, event):
+    # Fetch data bot terbaru dari database agar template selalu real-time
+    with Session(engine) as session:
+        db_bot = session.get(BotAdmin, bot_info.id)
+        if db_bot:
+            bot_info = db_bot
+
     text = event.raw_text or ""
     winners = re.findall(WINNER_REGEX, text)
     if not winners:
@@ -164,7 +170,6 @@ async def start_worker():
             if db_bot:
                 db_bot.scanned_channels = json.dumps(scanned_list)
                 session.commit()
-                # Reload bot_info local copy
                 bot_info.scanned_channels = json.dumps(scanned_list)
                 print(f"💾 Berhasil menyimpan {len(scanned_list)} channel/grup ke database!", flush=True)
 
