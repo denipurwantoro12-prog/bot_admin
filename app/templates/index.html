@@ -93,7 +93,7 @@
 
     <!-- MODAL POPUP LOG PENGIRIMAN -->
     <div id="logModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex justify-center items-center p-4 z-50">
-        <div class="bg-gray-800 rounded-lg max-w-3xl w-full p-6 space-y-4 border border-gray-700 shadow-xl max-h-[85vh] flex flex-col">
+        <div class="bg-gray-800 rounded-lg max-w-4xl w-full p-6 space-y-4 border border-gray-700 shadow-xl max-h-[85vh] flex flex-col">
             <div class="flex justify-between items-center border-b border-gray-700 pb-3">
                 <h3 class="text-lg font-bold text-amber-400" id="modalTitle">📜 Riwayat Pengiriman PM Winner</h3>
                 <button type="button" onclick="closeLogModal()" class="text-gray-400 hover:text-white font-bold text-xl">✕</button>
@@ -103,14 +103,15 @@
                 <table class="w-full text-left text-xs text-gray-300">
                     <thead class="bg-gray-700 text-gray-200 sticky top-0">
                         <tr>
-                            <th class="p-2.5">Waktu</th>
+                            <th class="p-2.5">Waktu (WIB)</th>
+                            <th class="p-2.5">Channel / Grup</th>
                             <th class="p-2.5">Winner Username</th>
                             <th class="p-2.5">Status</th>
                             <th class="p-2.5">Detail Catatan</th>
                         </tr>
                     </thead>
                     <tbody id="logTableBody">
-                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Memuat log...</td></tr>
+                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Memuat log...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -166,36 +167,47 @@
             document.getElementById('modalTitle').innerText = `📜 Riwayat Pengiriman PM Winner - ${botName}`;
             document.getElementById('logModal').classList.remove('hidden');
             const tbody = document.getElementById('logTableBody');
-            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Memuat log...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Memuat log...</td></tr>';
 
             try {
                 const res = await fetch(`/api/bot/${botId}/logs`);
                 const data = await res.json();
 
-                if (res.ok && data.logs.length > 0) {
+                if (res.ok && data.logs && data.logs.length > 0) {
                     tbody.innerHTML = '';
-                    data.logs.forEach(l => {
+                    data.logs.slice(0, 50).forEach(l => {
                         const tr = document.createElement('tr');
                         tr.className = 'border-b border-gray-700/50 hover:bg-gray-750';
                         
                         const isSuccess = l.status === 'SUCCESS';
-                        const badgeClass = isSuccess ? 'bg-green-900/80 text-green-300 border-green-700' : 'bg-red-900/80 text-red-300 border-red-700';
+                        const badgeClass = isSuccess 
+                            ? 'bg-green-900/80 text-green-300 border-green-700' 
+                            : 'bg-red-900/80 text-red-300 border-red-700';
 
+                        const cleanUsername = l.winner_username ? l.winner_username.replace('@', '') : '';
+                        const channelDisplay = l.channel_name || '-';
+                        
                         tr.innerHTML = `
-                            <td class="p-2.5 font-mono text-gray-400">${l.created_at}</td>
-                            <td class="p-2.5 font-bold text-white">@${l.winner_username}</td>
+                            <td class="p-2.5 font-mono text-gray-400 whitespace-nowrap">${l.created_at}</td>
+                            <td class="p-2.5 font-medium text-teal-300">${channelDisplay}</td>
+                            <td class="p-2.5 font-bold text-blue-400">
+                                ${cleanUsername ? `<a href="https://t.me/${cleanUsername}" target="_blank" class="hover:underline">@${cleanUsername}</a>` : '-'}
+                            </td>
                             <td class="p-2.5">
                                 <span class="px-2 py-0.5 rounded border text-[10px] font-bold ${badgeClass}">${l.status}</span>
                             </td>
-                            <td class="p-2.5 text-gray-300">${l.detail_message}</td>
+                            <td class="p-2.5 text-gray-300 space-y-1">
+                                <div>${l.detail_message}</div>
+                                ${l.announcement_link ? `<a href="${l.announcement_link}" target="_blank" class="text-indigo-400 hover:underline inline-block font-mono text-[11px] mt-0.5">🔗 Lihat Pesan ↗</a>` : ''}
+                            </td>
                         `;
                         tbody.appendChild(tr);
                     });
                 } else {
-                    tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Belum ada riwayat pengiriman PM.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Belum ada riwayat pengiriman PM.</td></tr>';
                 }
             } catch (err) {
-                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-400">Gagal mengambil data log.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-400">Gagal mengambil data log.</td></tr>';
             }
         }
 

@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import SQLModel, Session, select
 from telethon import TelegramClient
-
+from datetime import timedelta
 from app.database import create_db_and_tables, get_session, engine
 from app.models import BotAdmin, WinnerClaim, DeliveryLog
 
@@ -139,25 +139,35 @@ def update_bot_config(
     return RedirectResponse(url=f"/edit/{bot_id}", status_code=303)
 
 @app.get("/api/bot/{bot_id}/logs")
-def get_bot_logs(bot_id: int, db: Session = Depends(get_session)):
-    logs = db.exec(
+def get_bot_logs(
+    bot_id: int, 
+    limit: int = 100,  # Default dibatasi 100 log terbaru
+    session: Session = Depends(get_session)
+):
+    logs = session.exec(
         select(DeliveryLog)
         .where(DeliveryLog.bot_id == bot_id)
-        .order_by(DeliveryLog.created_at.desc())
+        .order_by(DeliveryLog.id.desc())
+        .limit(limit)  # <--- Menambahkan limit query ke database
     ).all()
-    
-    logs_data = [
-        {
+
+    formatted_logs = []
+    for log in logs:
+        # Jika log lama masih tersimpan UTC, tambahkan 7 jam untuk penyesuaian tampilan WIB
+        wib_time = log.created_at + timedelta(hours=7) if log.created_at else None
+        time_str = wib_time.strftime("%Y-%m-%d %H:%M:%S") if wib_time else "-"
+
+        formatted_logs.append({
             "id": log.id,
+            "created_at": time_str,
+            "channel_name": log.channel_name or "Grup/Channel Unknown",
             "winner_username": log.winner_username,
-            "announcement_link": log.announcement_link,
             "status": log.status,
             "detail_message": log.detail_message,
-            "created_at": log.created_at.strftime("%Y-%m-%d %H:%M:%S")
-        }
-        for log in logs
-    ]
-    return {"status": "SUCCESS", "logs": logs_data}
+            "announcement_link": log.announcement_link
+        })
+
+    return {"status": "SUCCESS", "logs": formatted_logs}
 
 @app.get("/api/bot/{bot_id}/scan-channels")
 async def scan_channels(bot_id: int, db: Session = Depends(get_session)):

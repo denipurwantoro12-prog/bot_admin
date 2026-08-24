@@ -6,12 +6,13 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-900 text-white p-8">
-    <div class="max-w-4xl mx-auto space-y-6">
+    <div class="max-w-5xl mx-auto space-y-6">
         <div class="flex justify-between items-center border-b border-gray-700 pb-4">
             <h1 class="text-2xl font-bold">⚙️ Setting Bot: {{ bot.name }}</h1>
             <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm">← Kembali</a>
         </div>
 
+        <!-- FORM PENGATURAN BOT -->
         <form action="/api/bot/update/{{ bot.id }}" method="POST" class="bg-gray-800 p-6 rounded-lg space-y-4">
             <div>
                 <label class="block text-sm text-gray-400 mb-1">Gemini API Key</label>
@@ -60,31 +61,59 @@
             <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-bold">Simpan Perubahan</button>
         </form>
 
+        <!-- TABEL LOG PENGIRIMAN PM PEMENANG -->
+        <div class="bg-gray-800 p-6 rounded-lg space-y-4">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-teal-400">📜 Riwayat Pengiriman PM (Delivery Logs)</h2>
+                <button type="button" onclick="loadLogs()" class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-xs">
+                    🔄 Refresh Log
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-gray-300">
+                    <thead class="bg-gray-700 text-gray-200">
+                        <tr>
+                            <th class="p-3">Waktu</th>
+                            <th class="p-3">Channel / Grup</th>
+                            <th class="p-3">Username Pemenang</th>
+                            <th class="p-3">Status</th>
+                            <th class="p-3">Detail / Link Pengumuman</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody">
+                        <tr><td colspan="5" class="p-4 text-center text-gray-500">Memuat log pengiriman...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- DATABASE CLAIMS FIELD -->
         <div class="bg-gray-800 p-6 rounded-lg space-y-4">
             <h2 class="text-xl font-semibold text-purple-400">📊 Database Output Field (Data Pemenang)</h2>
-            <table class="w-full text-left text-sm text-gray-300">
-                <thead class="bg-gray-700 text-gray-200">
-                    <tr>
-                        <th class="p-2">Username</th>
-                        <th class="p-2">E-Wallet</th>
-                        <th class="p-2">Nama Akun</th>
-                        <th class="p-2">Nomor Rekening/HP</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for claim in claims %}
-                    <tr class="border-b border-gray-700">
-                        <td class="p-2">@{{ claim.winner_username }}</td>
-                        <td class="p-2">{{ claim.ewallet_type or '-' }}</td>
-                        <td class="p-2">{{ claim.account_name or '-' }}</td>
-                        <td class="p-2">{{ claim.account_number or '-' }}</td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="4" class="p-4 text-center text-gray-500">Belum ada data claim masuk.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm text-gray-300">
+                    <thead class="bg-gray-700 text-gray-200">
+                        <tr>
+                            <th class="p-2">Username</th>
+                            <th class="p-2">E-Wallet</th>
+                            <th class="p-2">Nama Akun</th>
+                            <th class="p-2">Nomor Rekening/HP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for claim in claims %}
+                        <tr class="border-b border-gray-700">
+                            <td class="p-2">@{{ claim.winner_username }}</td>
+                            <td class="p-2">{{ claim.ewallet_type or '-' }}</td>
+                            <td class="p-2">{{ claim.account_name or '-' }}</td>
+                            <td class="p-2">{{ claim.account_number or '-' }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Belum ada data claim masuk.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
@@ -93,6 +122,7 @@
         let scannedList = [];
         let selectedGroups = [];
 
+        // Inisialisasi data target grup
         try {
             const rawData = JSON.parse(document.getElementById('target_channels').value || "[]");
             selectedGroups = rawData.map(item => {
@@ -104,7 +134,9 @@
         }
 
         renderBadges();
+        loadLogs(); // Memuat log pengiriman otomatis saat halaman dibuka
 
+        // Fungsi Scan Channel
         async function scanChannels() {
             const btn = document.getElementById('btnScan');
             const dropdownContainer = document.getElementById('scanDropdownContainer');
@@ -186,6 +218,46 @@
                 `;
                 container.appendChild(badge);
             });
+        }
+
+        // Fungsi Memuat Riwayat Log Pengiriman PM
+        async function loadLogs() {
+            const tableBody = document.getElementById('logTableBody');
+            tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-400">Memuat log...</td></tr>';
+
+            try {
+                const res = await fetch(`/api/bot/${botId}/logs`);
+                const data = await res.json();
+
+                if (res.ok && data.status === "SUCCESS" && data.logs.length > 0) {
+                    tableBody.innerHTML = data.logs.map(log => {
+                        const isSuccess = log.status === "SUCCESS";
+                        const badge = isSuccess
+                            ? '<span class="bg-green-900/60 text-green-300 border border-green-700 text-xs px-2.5 py-0.5 rounded font-bold">BERHASIL</span>'
+                            : '<span class="bg-red-900/60 text-red-300 border border-red-700 text-xs px-2.5 py-0.5 rounded font-bold">GAGAL</span>';
+
+                        return `
+                            <tr class="border-b border-gray-700 hover:bg-gray-750">
+                                <td class="p-3 text-xs text-gray-400 whitespace-nowrap">${log.created_at}</td>
+                                <td class="p-3 font-medium text-teal-300">${log.channel_name || '-'}</td>
+                                <td class="p-3 font-semibold text-blue-400">
+                                    <a href="https://t.me/${log.winner_username}" target="_blank" class="hover:underline">@${log.winner_username}</a>
+                                </td>
+                                <td class="p-3">${badge}</td>
+                                <td class="p-3 text-xs text-gray-300 space-y-1">
+                                    <div>${log.detail_message || '-'}</div>
+                                    ${log.announcement_link ? `<a href="${log.announcement_link}" target="_blank" class="text-indigo-400 hover:underline inline-block font-mono text-[11px] mt-1">🔗 Lihat Pengumuman ↗</a>` : ''}
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Belum ada riwayat log pengiriman.</td></tr>';
+                }
+            } catch (err) {
+                console.error("Error loading logs:", err);
+                tableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-400">Gagal mengambil data log.</td></tr>';
+            }
         }
     </script>
 </body>
