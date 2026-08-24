@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Veniw Userbot Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="max-w-6xl mx-auto space-y-8">
+        <h1 class="text-3xl font-bold border-b border-gray-700 pb-4">🤖 Dashboard Veniw Bot Admin</h1>
+
+        <!-- FORM REGISTRASI BOT -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md space-y-4">
+            <h2 class="text-xl font-semibold text-blue-400">1. Tambah Bot Admin Baru</h2>
+            
+            <form id="formStep1" class="grid grid-cols-2 gap-4">
+                <input type="text" id="name" placeholder="Nama Bot / Admin" required class="p-2 bg-gray-700 rounded text-white">
+                <input type="text" id="phone_number" placeholder="Nomor HP (+62...)" required class="p-2 bg-gray-700 rounded text-white">
+                <input type="number" id="api_id" placeholder="Telegram API ID" required class="p-2 bg-gray-700 rounded text-white">
+                <input type="text" id="api_hash" placeholder="Telegram API Hash" required class="p-2 bg-gray-700 rounded text-white">
+                <input type="text" id="gemini_api_key" placeholder="Gemini API Key (Opsional)" class="p-2 bg-gray-700 rounded text-white">
+                <select id="language" class="p-2 bg-gray-700 rounded text-white">
+                    <option value="ID">Bahasa Indonesia</option>
+                    <option value="EN">English</option>
+                </select>
+                <button type="submit" class="col-span-2 bg-blue-600 hover:bg-blue-500 py-2 rounded font-bold">Kirim Kode OTP</button>
+            </form>
+
+            <form id="formStep2" class="hidden grid grid-cols-2 gap-4 border-t border-gray-700 pt-4 mt-4">
+                <p class="col-span-2 text-yellow-400">Kode OTP dikirim ke Telegram kamu. Masukkan kode di bawah:</p>
+                <input type="text" id="otp_code" placeholder="Kode OTP Telegram" required class="p-2 bg-gray-700 rounded text-white">
+                <input type="password" id="password_2fa" placeholder="Password 2FA (opsional)" class="p-2 bg-gray-700 rounded text-white">
+                <button type="submit" class="col-span-2 bg-green-600 hover:bg-green-500 py-2 rounded font-bold">Verifikasi & Aktifkan Bot</button>
+            </form>
+        </div>
+
+        <!-- TABEL DAFTAR BOT -->
+        <div class="bg-gray-800 p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold mb-4 text-green-400">2. Daftar Bot Admin & Status Target Grup</h2>
+            <table class="w-full text-left text-sm text-gray-300">
+                <thead class="bg-gray-700 text-gray-200">
+                    <tr>
+                        <th class="p-3">Nama Bot</th>
+                        <th class="p-3">Nomor HP</th>
+                        <th class="p-3">Target Grup / Channel</th>
+                        <th class="p-3">Status Bot</th>
+                        <th class="p-3">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in bot_list %}
+                    <tr class="border-b border-gray-700">
+                        <td class="p-3 font-semibold text-white">{{ item.info.name }}</td>
+                        <td class="p-3 font-mono">{{ item.info.phone_number }}</td>
+                        
+                        <td class="p-3">
+                            {% if item.target_names %}
+                                <div class="flex flex-wrap gap-1">
+                                    {% for gname in item.target_names %}
+                                    <span class="bg-teal-900/80 text-teal-200 font-medium text-xs px-2.5 py-1 rounded-full border border-teal-600/50 shadow-sm">
+                                        🎯 {{ gname }}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <span class="bg-gray-700 text-gray-400 text-xs px-2 py-1 rounded border border-gray-600 italic">
+                                    🌐 Semua Chat / Belum Diset
+                                </span>
+                            {% endif %}
+                        </td>
+
+                        <td class="p-3">
+                            <span class="px-2 py-1 rounded text-xs font-bold {{ 'bg-green-600 text-white' if item.info.status == 'Active' else 'bg-yellow-600 text-yellow-100' }}">
+                                {{ item.info.status }}
+                            </span>
+                        </td>
+                        <td class="p-3 flex items-center gap-2">
+                            <a href="/edit/{{ item.info.id }}" class="bg-indigo-600 hover:bg-indigo-500 px-3 py-1 rounded text-xs font-bold">Edit Panel</a>
+                            <button type="button" onclick="openLogModal('{{ item.info.id }}', '{{ item.info.name }}')" class="bg-amber-600 hover:bg-amber-500 px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
+                                📜 Log Status
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="p-4 text-center text-gray-500">Belum ada bot admin terdaftar.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- MODAL POPUP LOG PENGIRIMAN -->
+    <div id="logModal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-sm flex justify-center items-center p-4 z-50">
+        <div class="bg-gray-800 rounded-lg max-w-3xl w-full p-6 space-y-4 border border-gray-700 shadow-xl max-h-[85vh] flex flex-col">
+            <div class="flex justify-between items-center border-b border-gray-700 pb-3">
+                <h3 class="text-lg font-bold text-amber-400" id="modalTitle">📜 Riwayat Pengiriman PM Winner</h3>
+                <button type="button" onclick="closeLogModal()" class="text-gray-400 hover:text-white font-bold text-xl">✕</button>
+            </div>
+
+            <div class="overflow-y-auto flex-1">
+                <table class="w-full text-left text-xs text-gray-300">
+                    <thead class="bg-gray-700 text-gray-200 sticky top-0">
+                        <tr>
+                            <th class="p-2.5">Waktu</th>
+                            <th class="p-2.5">Winner Username</th>
+                            <th class="p-2.5">Status</th>
+                            <th class="p-2.5">Detail Catatan</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logTableBody">
+                        <tr><td colspan="4" class="p-4 text-center text-gray-500">Memuat log...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="border-t border-gray-700 pt-3 text-right">
+                <button type="button" onclick="closeLogModal()" class="bg-gray-700 hover:bg-gray-600 px-4 py-1.5 rounded text-xs font-bold">Tutup</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const formStep1 = document.getElementById('formStep1');
+        const formStep2 = document.getElementById('formStep2');
+
+        formStep1.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('name', document.getElementById('name').value);
+            formData.append('phone_number', document.getElementById('phone_number').value);
+            formData.append('api_id', document.getElementById('api_id').value);
+            formData.append('api_hash', document.getElementById('api_hash').value);
+            formData.append('gemini_api_key', document.getElementById('gemini_api_key').value);
+            formData.append('language', document.getElementById('language').value);
+
+            const res = await fetch('/api/bot/register-step1', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.status === 'OTP_SENT') {
+                alert(data.message);
+                formStep2.classList.remove('hidden');
+            } else {
+                alert(JSON.stringify(data));
+            }
+        };
+
+        formStep2.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('phone_number', document.getElementById('phone_number').value);
+            formData.append('otp_code', document.getElementById('otp_code').value);
+            formData.append('password_2fa', document.getElementById('password_2fa').value);
+
+            const res = await fetch('/api/bot/verify-otp', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (data.status === 'SUCCESS') {
+                alert(data.message);
+                window.location.reload();
+            } else {
+                alert(data.detail || 'Verifikasi Gagal');
+            }
+        };
+
+        async function openLogModal(botId, botName) {
+            document.getElementById('modalTitle').innerText = `📜 Riwayat Pengiriman PM Winner - ${botName}`;
+            document.getElementById('logModal').classList.remove('hidden');
+            const tbody = document.getElementById('logTableBody');
+            tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Memuat log...</td></tr>';
+
+            try {
+                const res = await fetch(`/api/bot/${botId}/logs`);
+                const data = await res.json();
+
+                if (res.ok && data.logs.length > 0) {
+                    tbody.innerHTML = '';
+                    data.logs.forEach(l => {
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-gray-700/50 hover:bg-gray-750';
+                        
+                        const isSuccess = l.status === 'SUCCESS';
+                        const badgeClass = isSuccess ? 'bg-green-900/80 text-green-300 border-green-700' : 'bg-red-900/80 text-red-300 border-red-700';
+
+                        tr.innerHTML = `
+                            <td class="p-2.5 font-mono text-gray-400">${l.created_at}</td>
+                            <td class="p-2.5 font-bold text-white">@${l.winner_username}</td>
+                            <td class="p-2.5">
+                                <span class="px-2 py-0.5 rounded border text-[10px] font-bold ${badgeClass}">${l.status}</span>
+                            </td>
+                            <td class="p-2.5 text-gray-300">${l.detail_message}</td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-gray-500">Belum ada riwayat pengiriman PM.</td></tr>';
+                }
+            } catch (err) {
+                tbody.innerHTML = '<tr><td colspan="4" class="p-4 text-center text-red-400">Gagal mengambil data log.</td></tr>';
+            }
+        }
+
+        function closeLogModal() {
+            document.getElementById('logModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>

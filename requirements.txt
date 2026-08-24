@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+telethon
+jinja2
+python-multipart

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Bot Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="max-w-4xl mx-auto space-y-6">
+        <div class="flex justify-between items-center border-b border-gray-700 pb-4">
+            <h1 class="text-2xl font-bold">⚙️ Setting Bot: {{ bot.name }}</h1>
+            <a href="/" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-sm">← Kembali</a>
+        </div>
+
+        <form action="/api/bot/update/{{ bot.id }}" method="POST" class="bg-gray-800 p-6 rounded-lg space-y-4">
+            <div>
+                <label class="block text-sm text-gray-400 mb-1">Gemini API Key</label>
+                <input type="text" name="gemini_api_key" value="{{ bot.gemini_api_key or '' }}" class="w-full p-2 bg-gray-700 rounded text-white" placeholder="AIzaSy...">
+            </div>
+
+            <!-- FITUR SCAN & BADGE TARGET CHANNEL -->
+            <div class="space-y-3 border border-gray-700 p-4 rounded-lg bg-gray-850">
+                <div class="flex justify-between items-center">
+                    <label class="block text-sm text-gray-300 font-semibold">Target Group / Channel</label>
+                    <button type="button" id="btnScan" onclick="scanChannels()" class="bg-teal-600 hover:bg-teal-500 px-3 py-1 rounded text-xs font-bold flex items-center gap-1">
+                        🔍 Scan Grup & Channel Telegram
+                    </button>
+                </div>
+
+                <div id="scanDropdownContainer" class="hidden space-y-1">
+                    <span class="text-xs text-teal-400">Pilih dari hasil scan untuk menambah grup target:</span>
+                    <select id="channelSelect" onchange="addSelectedChannel()" class="w-full p-2 bg-gray-700 rounded text-white text-sm">
+                        <option value="">-- Pilih Grup / Channel --</option>
+                    </select>
+                </div>
+
+                <div class="space-y-1">
+                    <span class="text-xs text-gray-400">Grup terpilih saat ini:</span>
+                    <div id="selectedBadges" class="flex flex-wrap gap-2 p-2 bg-gray-900 rounded border border-gray-700 min-h-[42px] items-center">
+                        <span id="emptyNotice" class="text-xs text-gray-500 italic">Belum ada grup terpilih.</span>
+                    </div>
+                </div>
+
+                <input type="hidden" id="target_channels" name="target_channels" value="{{ bot.target_channels }}">
+            </div>
+
+            <!-- TEMPLATE PESAN WINNER CLAIM -->
+            <div>
+                <label class="block text-sm text-gray-300 font-semibold mb-1">Template Pesan PM Ke Winner</label>
+                <textarea name="winner_message_template" rows="8" class="w-full p-3 bg-gray-700 rounded text-white font-mono text-sm" placeholder="Gunakan {link} untuk menyisipkan link pengumuman secara otomatis.">{{ bot.winner_message_template or "Congrats! Please send your payment details.\n\nAnnouncement Link: {link}\n\nPLEASE FOLLOW FORMAT BELOW FOR PAYMENT:\n- EWallet : (ShopeePay / Dana / Bank / BEP20 / GCash)\n- Bank/ewallet account name :\n- Bank/ewallet number :\n- Send proof :" }}</textarea>
+                <p class="text-xs text-yellow-400 mt-1">💡 Gunakan tag <code>{link}</code> di dalam teks agar link pengumuman disisipkan otomatis oleh bot.</p>
+            </div>
+
+            <!-- PROMPT GEMINI AI -->
+            <div>
+                <label class="block text-sm text-gray-300 font-semibold mb-1">Gemini AI Prompt (Instruksi Parsing PM Pemenang)</label>
+                <textarea name="gemini_prompt" rows="4" class="w-full p-3 bg-gray-700 rounded text-white font-mono text-sm" placeholder="Ekstrak data e-wallet dari pesan berikut menjadi JSON: ewallet, account_name, account_number">{{ bot.gemini_prompt or '' }}</textarea>
+            </div>
+
+            <button type="submit" class="bg-blue-600 hover:bg-blue-500 px-6 py-2 rounded font-bold">Simpan Perubahan</button>
+        </form>
+
+        <!-- DATABASE CLAIMS FIELD -->
+        <div class="bg-gray-800 p-6 rounded-lg space-y-4">
+            <h2 class="text-xl font-semibold text-purple-400">📊 Database Output Field (Data Pemenang)</h2>
+            <table class="w-full text-left text-sm text-gray-300">
+                <thead class="bg-gray-700 text-gray-200">
+                    <tr>
+                        <th class="p-2">Username</th>
+                        <th class="p-2">E-Wallet</th>
+                        <th class="p-2">Nama Akun</th>
+                        <th class="p-2">Nomor Rekening/HP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for claim in claims %}
+                    <tr class="border-b border-gray-700">
+                        <td class="p-2">@{{ claim.winner_username }}</td>
+                        <td class="p-2">{{ claim.ewallet_type or '-' }}</td>
+                        <td class="p-2">{{ claim.account_name or '-' }}</td>
+                        <td class="p-2">{{ claim.account_number or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="p-4 text-center text-gray-500">Belum ada data claim masuk.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const botId = "{{ bot.id }}";
+        let scannedList = [];
+        let selectedGroups = [];
+
+        try {
+            const rawData = JSON.parse(document.getElementById('target_channels').value || "[]");
+            selectedGroups = rawData.map(item => {
+                if (typeof item === 'object' && item !== null) return item;
+                return { id: item, name: `Group ID: ${item}` };
+            });
+        } catch (e) {
+            selectedGroups = [];
+        }
+
+        renderBadges();
+
+        async function scanChannels() {
+            const btn = document.getElementById('btnScan');
+            const dropdownContainer = document.getElementById('scanDropdownContainer');
+            const channelSelect = document.getElementById('channelSelect');
+
+            btn.disabled = true;
+            btn.innerText = "⏳ Scanning Telegram...";
+
+            try {
+                const res = await fetch(`/api/bot/${botId}/scan-channels`);
+                const data = await res.json();
+
+                if (res.ok && data.status === "SUCCESS") {
+                    scannedList = data.channels;
+                    channelSelect.innerHTML = '<option value="">-- Pilih Grup / Channel --</option>';
+                    data.channels.forEach(ch => {
+                        const opt = document.createElement('option');
+                        opt.value = ch.id;
+                        opt.innerText = `${ch.name} (ID: ${ch.id})`;
+                        channelSelect.appendChild(opt);
+                    });
+                    dropdownContainer.classList.remove('hidden');
+                } else {
+                    alert(data.detail || "Gagal scan grup.");
+                }
+            } catch (err) {
+                alert("Terjadi kesalahan koneksi.");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "🔍 Scan Grup & Channel Telegram";
+            }
+        }
+
+        function addSelectedChannel() {
+            const channelSelect = document.getElementById('channelSelect');
+            const selectedId = parseInt(channelSelect.value);
+
+            if (!selectedId) return;
+
+            const found = scannedList.find(c => c.id === selectedId);
+            const groupObj = found ? { id: found.id, name: found.name } : { id: selectedId, name: `Group ID: ${selectedId}` };
+
+            if (!selectedGroups.some(g => g.id === groupObj.id)) {
+                selectedGroups.push(groupObj);
+                updateTargetInput();
+                renderBadges();
+            } else {
+                alert("Grup ini sudah dipilih!");
+            }
+
+            channelSelect.value = "";
+        }
+
+        function removeGroup(id) {
+            selectedGroups = selectedGroups.filter(g => g.id !== id);
+            updateTargetInput();
+            renderBadges();
+        }
+
+        function updateTargetInput() {
+            document.getElementById('target_channels').value = JSON.stringify(selectedGroups);
+        }
+
+        function renderBadges() {
+            const container = document.getElementById('selectedBadges');
+            container.innerHTML = '';
+
+            if (selectedGroups.length === 0) {
+                container.innerHTML = '<span class="text-xs text-gray-500 italic">Belum ada grup terpilih.</span>';
+                return;
+            }
+
+            selectedGroups.forEach(g => {
+                const badge = document.createElement('div');
+                badge.className = 'bg-teal-800 text-teal-100 text-xs px-2.5 py-1 rounded-full border border-teal-600 flex items-center gap-1.5 font-medium';
+                badge.innerHTML = `
+                    <span>🎯 ${g.name}</span>
+                    <button type="button" onclick="removeGroup(${g.id})" class="text-teal-300 hover:text-red-400 font-bold ml-1">✕</button>
+                `;
+                container.appendChild(badge);
+            });
+        }
+    </script>
+</body>
+</html>

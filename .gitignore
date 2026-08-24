@@ -1,0 +1,19 @@
+# Python & Environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Database & Sessions (Data Sensitif)
+database.db
+database.db-wal
+database.db-shm
+sessions/
+*.session
+*.session-journal
+
+# Configuration & IDE
+.env
+.vscode/
+.DS_Store
+EOF
