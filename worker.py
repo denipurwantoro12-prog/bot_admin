@@ -16,8 +16,6 @@ from telethon.errors import (
 from app.database import engine
 from app.models import BotAdmin, DeliveryLog
 
-WINNER_REGEX = r"@([a-zA-Z0-9_]{5,32})"
-
 def normalize_id(chat_id) -> str:
     """Mengubah ID berbagai format (-100xxx, -xxx, xxx) menjadi string angka murni."""
     s = str(chat_id)
@@ -26,6 +24,39 @@ def normalize_id(chat_id) -> str:
     elif s.startswith("-"):
         return s[1:]
     return s
+
+def extract_winners(text: str) -> list[str]:
+    """
+    Ekstraksi username pemenang utama secara presisi:
+    - Menangani emoji (🏆) dan enter/newline (\\n).
+    - Menangani format WINNER@user, WINNER: @user, maupun WINNER \\n @user.
+    - Mengabaikan daftar @username di bagian SUBS / BACKUP.
+    """
+    # 1. Cari pola spesifik kata WINNER yang diikuti oleh @username (mengabaikan 'WINNER ANNOUNCEMENT')
+    exact_matches = re.findall(r'WINNER\s*[\r\n\:\-]*\s*@([a-zA-Z0-9_]{5,32})', text, re.IGNORECASE)
+    
+    # Filter agar kata 'ANNOUNCEMENT' tidak sengaja terikut jika ada penulisan aneh
+    valid_exact = [u for u in exact_matches if u.lower() != 'announcement']
+    if valid_exact:
+        return list(set(valid_exact))
+
+    # 2. Fallback: Ambil teks khusus di antara header WINNER dan section SUBS/BACKUP/Please check
+    winner_block_match = re.search(
+        r'WINNER\s*[\r\n\:\-]+(.*?)(?=SUBS|BACKUP|Please check|Number of|Thank you|$)', 
+        text, 
+        re.IGNORECASE | re.DOTALL
+    )
+    if winner_block_match:
+        block_text = winner_block_match.group(1)
+        found = re.findall(r'@([a-zA-Z0-9_]{5,32})', block_text)
+        if found:
+            return list(set(found))
+
+    # 3. Fallback Terakhir: Potong teks sebelum kata SUBS/BACKUP agar akun backup tidak terkirim PM
+    main_text = re.split(r'SUBS\s*/?\s*BACKUP', text, flags=re.IGNORECASE)[0]
+    all_usernames = re.findall(r'@([a-zA-Z0-9_]{5,32})', main_text)
+    
+    return list(set(all_usernames))
 
 async def get_channel_name(event, bot_info: BotAdmin) -> str:
     """Mencari nama grup/channel secara presisi dari event, entity, atau daftar scanned_channels."""
@@ -60,9 +91,23 @@ async def process_winner_announcement(client: TelegramClient, bot_info: BotAdmin
             bot_info = db_bot
 
     text = event.raw_text or ""
-    winners = re.findall(WINNER_REGEX, text)
+    
+    me = await client.get_me()
+    my_username = (me.username or "").lower()
+
+    # --- PERIKSA PENUGASAN BOT ---
+    # Jika pesan menyebutkan "@veniw12 will contact you", pastikan hanya bot tersebut yang mengeksekusi
+    assigned_bot_match = re.search(r'@([a-zA-Z0-9_]{5,32})\s+will contact you', text, re.IGNORECASE)
+    if assigned_bot_match:
+        assigned_bot = assigned_bot_match.group(1).lower()
+        if assigned_bot != my_username:
+            print(f"⏭️ Melewati: Pesan menugaskan @{assigned_bot}, sedangkan bot ini adalah @{my_username}.", flush=True)
+            return
+
+    # --- EKSTRAKSI PEMENANG ---
+    winners = extract_winners(text)
     if not winners:
-        print("ℹ️ Pesan terdeteksi di grup target, tetapi tidak mengandung tag @username.", flush=True)
+        print("ℹ️ Pesan terdeteksi di grup target, tetapi tidak mengandung username pemenang yang valid.", flush=True)
         return
 
     channel_name = await get_channel_name(event, bot_info)
@@ -83,9 +128,6 @@ async def process_winner_announcement(client: TelegramClient, bot_info: BotAdmin
 
     template = bot_info.winner_message_template or "Selamat! Kamu menang event.\nLink: {link}"
     message_to_send = template.replace("{link}", announcement_link)
-
-    me = await client.get_me()
-    my_username = (me.username or "").lower()
 
     for username in set(winners):
         if username.lower() == my_username:
